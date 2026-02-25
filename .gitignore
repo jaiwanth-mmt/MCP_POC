@@ -1,1 +1,37 @@
 mcp-cab-tools/
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# uv
+.uv/
+
+# Environment variables / secrets
+.env
+.env.*
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDEs
+.vscode/
+.idea/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# MCP Storage (shared data between processes)
+.storage/
