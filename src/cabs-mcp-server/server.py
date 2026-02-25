@@ -204,22 +204,14 @@ async def hold_cab(ctx: Context, input: HoldRequest) -> HoldAPIResponse:
         "passengerDetail": {
             "first_name": input.first_name,
             "last_name": input.last_name,
-            "gender": input.gender.strip().upper(),
+            "gender": input.gender,
         },
         "contactDetails": {
-            "email_id": input.email.strip().lower(),
-            "mobile": input.mobile.replace(" ", "").replace("-", ""),
+            "email_id": input.email,
+            "mobile": input.mobile,
             "country_code": "+91",
         },
     }
-
-    # Normalize mobile number to 10 digits
-    mobile = payload["contactDetails"]["mobile"]
-    if mobile.startswith("+91"):
-        mobile = mobile[3:]
-    elif mobile.startswith("91") and len(mobile) == 12:
-        mobile = mobile[2:]
-    payload["contactDetails"]["mobile"] = mobile
 
     try:
         result = await api_client.hold_cab(payload)

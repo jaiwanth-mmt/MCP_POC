@@ -141,7 +141,7 @@ class HoldRequest(BaseModel):
     last_name: str = Field(default="", description="Passenger last name")
     gender: str = Field(..., description="Gender (M/F)")
     email: str = Field(..., description="Email address")
-    mobile: str = Field(..., description="Mobile number")
+    mobile: str = Field(..., description="Mobile number (10 digits, starting with 6-9)")
 
     @field_validator("gender")
     @classmethod
@@ -150,6 +150,28 @@ class HoldRequest(BaseModel):
         if v not in ("M", "F"):
             raise ValueError("Gender must be M or F")
         return v
+
+    @field_validator("mobile")
+    @classmethod
+    def validate_mobile(cls, v: str):
+        phone = v.replace(" ", "").replace("-", "")
+        if phone.startswith("+91"):
+            phone = phone[3:]
+        elif phone.startswith("91") and len(phone) == 12:
+            phone = phone[2:]
+        if not re.match(r'^[6-9]\d{9}$', phone):
+            raise ValueError(
+                "Invalid mobile number. Must be 10 digits starting with 6-9."
+            )
+        return phone
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, v: str):
+        email = v.strip().lower()
+        if not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', email):
+            raise ValueError("Invalid email format")
+        return email
 
 
 class HoldAPIPayload(BaseModel):
