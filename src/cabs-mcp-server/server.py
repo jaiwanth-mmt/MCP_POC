@@ -71,6 +71,7 @@ def parse_pickup_datetime(date_str: str, time_str: str) -> int:
         "If the tool returns a disambiguation_needed response with location options, "
         "present the numbered options to the user and ask them to pick one (or say 'none' for a different location). "
         "Then call this tool again with the selected place_id in source_place_id or destination_place_id. "
+        "When presenting cab options to the user, always include: model name, cab type, fare, seat capacity, luggage capacity, fuel type, AC, and rating. "
         "If the response has status 'no_cabs_found', apologize politely and share the message and suggestion. "
         "Never say 'server error' or show raw error codes to the user."
     ),
@@ -186,7 +187,7 @@ async def search_cabs(ctx: Context, input: SearchRequest) -> dict:
         "Reserve a selected cab with passenger and contact details. "
         "IMPORTANT: Do NOT assume or guess any user-provided input values. "
         "The system fields (search_id, cab_id, category_id) come from the search results - do not ask the user for these. "
-        "But you MUST ask the user explicitly for: first name, last name, gender, email, and mobile number. "
+        "But you MUST ask the user explicitly for: first name, gender, email, and mobile number. Last name is optional — do not require it. "
         "Never assume or fill in passenger or contact details on your own. "
         "If the response has status 'hold_failed', apologize politely and share the message and suggestion. "
         "Never say 'server error' or show raw error codes to the user. "
