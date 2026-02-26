@@ -13,7 +13,7 @@ from models.models import (
     HoldAPIResponse,
 )
 from services.logging_config import get_logger, setup_logging
-from services.location import get_location_with_disambiguation
+from services.location import resolve_location
 from services import api_client
 
 log_level = os.getenv("LOG_LEVEL", "INFO")
@@ -61,8 +61,21 @@ def parse_pickup_datetime(date_str: str, time_str: str) -> int:
     return int(dt.timestamp() * 1000)
 
 
-@mcp.tool(name="search_cabs", description="Search available cabs between source and destination")
-async def search_cabs(ctx: Context, input: SearchRequest) -> SearchAPIResponse:
+@mcp.tool(
+    name="search_cabs",
+    description=(
+        "Search available cabs between source and destination. "
+        "IMPORTANT: Do NOT assume or guess any input values. "
+        "Always ask the user explicitly for: source location, destination location, travel date, and pickup time. "
+        "Never use default or assumed values for date and time - the user must provide them. "
+        "If the tool returns a disambiguation_needed response with location options, "
+        "present the numbered options to the user and ask them to pick one (or say 'none' for a different location). "
+        "Then call this tool again with the selected place_id in source_place_id or destination_place_id. "
+        "If the response has status 'no_cabs_found', apologize politely and share the message and suggestion. "
+        "Never say 'server error' or show raw error codes to the user."
+    ),
+)
+async def search_cabs(ctx: Context, input: SearchRequest) -> dict:
     logger.info(
         "Cab search request received",
         extra={"source": input.source, "destination": input.destination}
@@ -70,60 +83,40 @@ async def search_cabs(ctx: Context, input: SearchRequest) -> SearchAPIResponse:
 
     # Resolve source location
     try:
-        source_location, source_error = await get_location_with_disambiguation(
-            ctx, input.source, "source"
+        source_location, source_disambiguation, source_error = await resolve_location(
+            input.source, "source", input.source_place_id
         )
+        if source_disambiguation:
+            logger.info("Source disambiguation needed, returning options")
+            return source_disambiguation
         if source_error:
-            logger.error(
-                "Source location resolution failed",
-                extra={"query": input.source, "error": source_error}
-            )
-            await ctx.info(f"Source location error: {source_error}")
-            return SearchAPIResponse(
-                searchId="", totalDistanceInKm=0, totalApproxDurationInMin=0,
-                cabAvailabilityTime=0, cabs=[],
-            )
+            logger.error("Source location resolution failed", extra={"error": source_error})
+            return {"status": "error", "message": source_error}
     except ValueError as e:
         logger.error("System error during source resolution", extra={"error": str(e)})
-        await ctx.info(f"System error: {str(e)}")
-        return SearchAPIResponse(
-            searchId="", totalDistanceInKm=0, totalApproxDurationInMin=0,
-            cabAvailabilityTime=0, cabs=[],
-        )
+        return {"status": "error", "message": str(e)}
 
     # Resolve destination location
     try:
-        dest_location, dest_error = await get_location_with_disambiguation(
-            ctx, input.destination, "destination"
+        dest_location, dest_disambiguation, dest_error = await resolve_location(
+            input.destination, "destination", input.destination_place_id
         )
+        if dest_disambiguation:
+            logger.info("Destination disambiguation needed, returning options")
+            return dest_disambiguation
         if dest_error:
-            logger.error(
-                "Destination location resolution failed",
-                extra={"query": input.destination, "error": dest_error}
-            )
-            await ctx.info(f"Destination location error: {dest_error}")
-            return SearchAPIResponse(
-                searchId="", totalDistanceInKm=0, totalApproxDurationInMin=0,
-                cabAvailabilityTime=0, cabs=[],
-            )
+            logger.error("Destination location resolution failed", extra={"error": dest_error})
+            return {"status": "error", "message": dest_error}
     except ValueError as e:
         logger.error("System error during destination resolution", extra={"error": str(e)})
-        await ctx.info(f"System error: {str(e)}")
-        return SearchAPIResponse(
-            searchId="", totalDistanceInKm=0, totalApproxDurationInMin=0,
-            cabAvailabilityTime=0, cabs=[],
-        )
+        return {"status": "error", "message": str(e)}
 
     # Convert date + time to epoch milliseconds
     try:
         pickup_time_ms = parse_pickup_datetime(input.date, input.time)
     except ValueError as e:
         logger.error("Date/time parsing failed", extra={"error": str(e)})
-        await ctx.info(f"Date/time error: {str(e)}")
-        return SearchAPIResponse(
-            searchId="", totalDistanceInKm=0, totalApproxDurationInMin=0,
-            cabAvailabilityTime=0, cabs=[],
-        )
+        return {"status": "error", "message": str(e)}
 
     # Build source payload with sourceText
     source_dict = source_location.model_dump()
@@ -152,11 +145,11 @@ async def search_cabs(ctx: Context, input: SearchRequest) -> SearchAPIResponse:
         result = await api_client.search_cabs(payload)
     except ValueError as e:
         logger.error("Search API call failed", extra={"error": str(e)})
-        await ctx.info(f"Search error: {str(e)}")
-        return SearchAPIResponse(
-            searchId="", totalDistanceInKm=0, totalApproxDurationInMin=0,
-            cabAvailabilityTime=0, cabs=[],
-        )
+        return {
+            "status": "no_cabs_found",
+            "message": str(e),
+            "suggestion": "You can try changing the date, time, or locations and search again.",
+        }
 
     if not result.cabs:
         logger.warning(
@@ -166,27 +159,46 @@ async def search_cabs(ctx: Context, input: SearchRequest) -> SearchAPIResponse:
                 "destination": dest_location.address,
             }
         )
-        await ctx.info(
-            f"No cabs available for route:\n"
-            f"From: {source_location.address}\n"
-            f"To: {dest_location.address}\n"
-            f"Please try a different route or time."
-        )
-    else:
-        logger.info(
-            "Cabs found",
-            extra={
-                "count": len(result.cabs),
-                "searchId": result.searchId,
-                "distance_km": result.totalDistanceInKm,
-            }
-        )
+        return {
+            "status": "no_cabs_found",
+            "message": (
+                f"No cabs are currently available from {source_location.address} "
+                f"to {dest_location.address} at the requested date and time."
+            ),
+            "suggestion": "You can try a different date, time, or nearby pickup/drop location.",
+        }
 
-    return result
+    logger.info(
+        "Search completed",
+        extra={
+            "count": len(result.cabs),
+            "searchId": result.searchId,
+            "distance_km": result.totalDistanceInKm,
+        }
+    )
+
+    return result.model_dump()
 
 
-@mcp.tool(name="hold_cab", description="Reserve a selected cab with passenger and contact details")
-async def hold_cab(ctx: Context, input: HoldRequest) -> HoldAPIResponse:
+@mcp.tool(
+    name="hold_cab",
+    description=(
+        "Reserve a selected cab with passenger and contact details. "
+        "IMPORTANT: Do NOT assume or guess any user-provided input values. "
+        "The system fields (search_id, cab_id, category_id) come from the search results - do not ask the user for these. "
+        "But you MUST ask the user explicitly for: first name, last name, gender, email, and mobile number. "
+        "Never assume or fill in passenger or contact details on your own. "
+        "If the response has status 'hold_failed', apologize politely and share the message and suggestion. "
+        "Never say 'server error' or show raw error codes to the user. "
+        "On SUCCESS, present the response EXACTLY in this format:\n"
+        "1. Show 'Here are your booking details:' followed by the passenger details (name, gender, email, mobile).\n"
+        "2. Say 'Pay through the link below to get your booking confirmed:' and show the paymentUrl.\n"
+        "3. Say 'After payment, you can track your booking on MakeMyTrip with the same details you provided above.'\n"
+        "4. Show MakeMyTrip link: https://www.makemytrip.com/\n"
+        "NEVER say 'Booking confirmed' — the booking is NOT confirmed until the user pays."
+    ),
+)
+async def hold_cab(ctx: Context, input: HoldRequest) -> dict:
     logger.info(
         "Hold cab request received",
         extra={
@@ -220,8 +232,11 @@ async def hold_cab(ctx: Context, input: HoldRequest) -> HoldAPIResponse:
             "Hold API call failed",
             extra={"search_id": input.search_id, "error": str(e)}
         )
-        await ctx.info(f"Hold error: {str(e)}")
-        raise
+        return {
+            "status": "hold_failed",
+            "message": str(e),
+            "suggestion": "You can search again for available cabs and try reserving a different one.",
+        }
 
     logger.info(
         "Cab hold successful",
@@ -231,15 +246,18 @@ async def hold_cab(ctx: Context, input: HoldRequest) -> HoldAPIResponse:
         }
     )
 
-    await ctx.info(
-        f"Cab Reserved!\n\n"
-        f"Booking ID: {result.bookingId}\n"
-        f"Passenger: {input.first_name} {input.last_name}\n\n"
-        f"Payment URL: {result.paymentUrl}\n\n"
-        f"Please open this URL in your browser to complete payment."
-    )
-
-    return result
+    return {
+        "status": "success",
+        "bookingId": result.bookingId,
+        "paymentUrl": result.paymentUrl,
+        "passengerDetails": {
+            "name": f"{input.first_name} {input.last_name}".strip(),
+            "gender": input.gender,
+            "email": input.email,
+            "mobile": f"+91 {input.mobile}",
+        },
+        "makemytripUrl": "https://www.makemytrip.com/",
+    }
 
 
 if __name__ == "__main__":

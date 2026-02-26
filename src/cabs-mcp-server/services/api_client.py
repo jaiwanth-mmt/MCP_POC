@@ -42,20 +42,30 @@ async def search_cabs(payload: dict) -> SearchAPIResponse:
 
     except httpx.TimeoutException:
         logger.error("Search API request timed out", extra={"url": SEARCH_API_URL})
-        raise ValueError("Search API request timed out. Please try again.")
+        raise ValueError(
+            "The cab search service is taking too long to respond. "
+            "Please try again in a moment."
+        )
     except httpx.HTTPStatusError as e:
         logger.error(
             "Search API returned error status",
             extra={"status_code": e.response.status_code, "body": e.response.text[:500]}
         )
-        raise ValueError(f"Search API error (HTTP {e.response.status_code})")
+        raise ValueError(
+            "Unable to search for cabs at the moment. "
+            "The cab service encountered an issue. "
+            "Please try again with a different date/time or route."
+        )
     except Exception as e:
         logger.error(
             "Unexpected error calling Search API",
             extra={"error": str(e), "error_type": type(e).__name__},
             exc_info=True,
         )
-        raise ValueError(f"Failed to search cabs: {str(e)}")
+        raise ValueError(
+            "Something went wrong while searching for cabs. "
+            "Please try again in a moment."
+        )
 
 
 async def hold_cab(payload: dict) -> HoldAPIResponse:
@@ -84,17 +94,27 @@ async def hold_cab(payload: dict) -> HoldAPIResponse:
 
     except httpx.TimeoutException:
         logger.error("Hold API request timed out", extra={"url": HOLD_API_URL})
-        raise ValueError("Hold API request timed out. Please try again.")
+        raise ValueError(
+            "The cab reservation service is taking too long to respond. "
+            "Please try again in a moment."
+        )
     except httpx.HTTPStatusError as e:
         logger.error(
             "Hold API returned error status",
             extra={"status_code": e.response.status_code, "body": e.response.text[:500]}
         )
-        raise ValueError(f"Hold API error (HTTP {e.response.status_code})")
+        raise ValueError(
+            "Unable to reserve this cab at the moment. "
+            "The cab may no longer be available. "
+            "Please search again and try a different option."
+        )
     except Exception as e:
         logger.error(
             "Unexpected error calling Hold API",
             extra={"error": str(e), "error_type": type(e).__name__},
             exc_info=True,
         )
-        raise ValueError(f"Failed to hold cab: {str(e)}")
+        raise ValueError(
+            "Something went wrong while reserving the cab. "
+            "Please try again in a moment."
+        )

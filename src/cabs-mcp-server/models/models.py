@@ -45,10 +45,18 @@ class LocationObject(BaseModel):
 
 class SearchRequest(BaseModel):
     """User-facing input for the search_cabs tool."""
-    source: str = Field(..., min_length=1, description="Pickup location")
-    destination: str = Field(..., min_length=1, description="Drop location")
-    date: str = Field(..., description="Date of journey (e.g. 28-02-2026 or 2026-02-28)")
-    time: str = Field(..., description="Time of pickup (e.g. 10:30 AM or 14:30)")
+    source: str = Field(..., min_length=1, description="Pickup location text. Must be explicitly provided by the user, never assumed.")
+    destination: str = Field(..., min_length=1, description="Drop location text. Must be explicitly provided by the user, never assumed.")
+    date: str = Field(..., description="Date of journey (e.g. 28-02-2026 or 2026-02-28). Must be explicitly provided by the user, never assumed or defaulted.")
+    time: str = Field(..., description="Time of pickup (e.g. 10:30 AM or 14:30). Must be explicitly provided by the user, never assumed or defaulted.")
+    source_place_id: Optional[str] = Field(
+        default=None,
+        description="Google place_id for source. If provided, skips location search and resolves directly. Use this when the user has selected a specific location from disambiguation options."
+    )
+    destination_place_id: Optional[str] = Field(
+        default=None,
+        description="Google place_id for destination. If provided, skips location search and resolves directly. Use this when the user has selected a specific location from disambiguation options."
+    )
 
     @field_validator("source", "destination")
     @classmethod
@@ -134,21 +142,21 @@ class ContactDetails(BaseModel):
 
 class HoldRequest(BaseModel):
     """User-facing input for the hold_cab tool."""
-    search_id: str = Field(..., description="Search ID from search results")
-    cab_id: str = Field(..., description="Cab ID from search results")
-    category_id: str = Field(..., description="Category ID from search results")
-    first_name: str = Field(..., min_length=1, description="Passenger first name")
-    last_name: str = Field(default="", description="Passenger last name")
-    gender: str = Field(..., description="Gender (M/F)")
-    email: str = Field(..., description="Email address")
-    mobile: str = Field(..., description="Mobile number (10 digits, starting with 6-9)")
+    search_id: str = Field(..., description="Search ID from search results. System-managed, do not ask the user.")
+    cab_id: str = Field(..., description="Cab ID from search results. System-managed, do not ask the user.")
+    category_id: str = Field(..., description="Category ID from search results. System-managed, do not ask the user.")
+    first_name: str = Field(..., min_length=1, description="Passenger first name. Must be explicitly provided by the user, never assumed.")
+    last_name: str = Field(default="", description="Passenger last name. Must be explicitly provided by the user, never assumed.")
+    gender: str = Field(..., description="Gender (M/F/O — Male, Female, or Others). Must be explicitly provided by the user, never assumed.")
+    email: str = Field(..., description="Email address. Must be explicitly provided by the user, never assumed.")
+    mobile: str = Field(..., description="Mobile number (10 digits, starting with 6-9). Must be explicitly provided by the user, never assumed.")
 
     @field_validator("gender")
     @classmethod
     def validate_gender(cls, v: str):
         v = v.strip().upper()
-        if v not in ("M", "F"):
-            raise ValueError("Gender must be M or F")
+        if v not in ("M", "F", "O"):
+            raise ValueError("Gender must be M, F, or O")
         return v
 
     @field_validator("mobile")
