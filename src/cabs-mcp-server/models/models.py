@@ -146,7 +146,7 @@ class HoldRequest(BaseModel):
     cab_id: str = Field(..., description="Cab ID from search results. System-managed, do not ask the user.")
     category_id: str = Field(..., description="Category ID from search results. System-managed, do not ask the user.")
     first_name: str = Field(..., min_length=1, description="Passenger first name. Must be explicitly provided by the user, never assumed.")
-    last_name: str = Field(default="", description="Passenger last name. Must be explicitly provided by the user, never assumed.")
+    last_name: str = Field(default="", description="Passenger last name. Optional — only ask if the user provides it, do not require it.")
     gender: str = Field(..., description="Gender (M/F/O — Male, Female, or Others). Must be explicitly provided by the user, never assumed.")
     email: str = Field(..., description="Email address. Must be explicitly provided by the user, never assumed.")
     mobile: str = Field(..., description="Mobile number (10 digits, starting with 6-9). Must be explicitly provided by the user, never assumed.")
